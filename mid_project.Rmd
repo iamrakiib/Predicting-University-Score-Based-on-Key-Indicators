@@ -1,0 +1,733 @@
+---
+title: "University Ranking Analysis"
+author: |
+  Group 5  
+  22-46624-1  
+  22-46667-1  
+  22-46342-1  
+  22-47180-1
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    code_folding: show
+    df_print: paged
+    toc: true
+    toc_depth: 2
+    number_sections: false
+  pdf_document:
+    toc: true
+    toc_depth: 2
+---
+
+
+
+## Data Acquisition and Initial Exploration: 
+Import necessary library and load the dataset
+```{r}
+
+
+library(ggplot2)
+library(GGally)
+library(dplyr)
+library(ggcorrplot)
+library(RColorBrewer)
+library(tidyverse)
+library(psych)
+library(patchwork)
+
+
+url <- "https://raw.githubusercontent.com/iamrakiib/Predicting-University-Score-Based-on-Key-Indicators/main/cwurData.csv"
+df <- read.csv(url)
+```
+
+An initial inspection to understand its structure and variable types.
+```{r}
+#view structure of the dataset
+print(str(df))
+
+```
+
+
+
+```{r}
+# View first few rows
+print(head(df))
+
+```
+
+```{r}
+# View column names
+print(colnames(df))
+```
+```{r}
+# Summary statistics
+print(summary(df))
+```
+
+## Data Cleaning and Wrangling
+Identify and handle missing values, duplicates, and any other data quality issues.
+
+```{r}
+#check Missing Values Per Column
+print(colSums(is.na(df)))
+
+```
+```{r}
+#check missing values in the entire dataset
+print(sum(is.na(df)))
+```
+```{r}
+#check which rows have missing values
+print(sum(!complete.cases(df)))
+
+```
+```{r}
+#check if there is any duplicate rows
+print(sum(duplicated(df)))
+```
+
+
+```{r}
+library(e1071)
+skew_broad_impact <- skewness(df$broad_impact, na.rm = TRUE) # na.rm=true, missing value bad diye count kore
+cat("Skewness of 'broad_impact':", skew_broad_impact, "\n") 
+```
+```{r}
+# Fill missing values in 'broad_impact' with the mean as skew is symmetric
+df$broad_impact[is.na(df$broad_impact)] <- mean(df$broad_impact, na.rm = TRUE)
+```
+
+
+```{r}
+#after filling with mean check is there any missing value remains in broad impact
+print(sum(is.na(df$broad_impact)))
+```
+
+```{r}
+#after filling with mean check is there any missing value remains in any column
+print(colSums(is.na(df)))
+```
+```{r}
+#check if the missing value is properly filled
+print(str(df))
+```
+
+
+```{r}
+# Combined university count extraction and printing
+university_count_in_2015 <- nrow(df[df$year == 2015, ])
+university_count_before_2015 <- nrow(df[df$year < 2015, ])
+university_count_in_2014 <- nrow(df[df$year == 2014, ])
+university_count_in_2013 <- nrow(df[df$year == 2013, ])
+university_count_in_2012 <- nrow(df[df$year == 2012, ])
+
+# Print all counts
+print(paste("Universities in 2015:", university_count_in_2015))
+print(paste("Universities before 2015:", university_count_before_2015))
+print(paste("Universities in 2014:", university_count_in_2014))
+print(paste("Universities in 2013:", university_count_in_2013))
+print(paste("Universities in 2012:", university_count_in_2012))
+
+```
+
+
+
+```{r}
+# Nominal (unordered categories)
+df$country <- as.factor(df$country)
+df$institution <- as.factor(df$institution)
+
+# Ordinal (ordered categories - optional)
+# For example, creating a rank group (optional)
+
+
+df <- df %>%
+  group_by(year) %>%
+  arrange(year, world_rank) %>%
+  mutate(year_rank = row_number()) %>%
+  ungroup() %>%
+  mutate(rank_group = cut(year_rank,
+                          breaks = c(0, 100, 500, Inf),
+                          labels = c("Top Tier (1-100)", "Mid Tier (101-500)", "Lower Tier (501+)"),
+                          right = TRUE)) %>%
+  mutate(rank_group = as.factor(rank_group))
+
+print(head(df))
+```
+
+```{r}
+
+
+summary_stats <- df %>%
+  group_by(year, rank_group) %>%
+  summarise(
+    avg_score = mean(score, na.rm = TRUE),
+    avg_publications = mean(publications, na.rm = TRUE),
+    influence=mean(influence, na.rm = TRUE),
+    count = n()
+  ) %>%
+  arrange(year, rank_group)
+
+print(summary_stats)
+
+```
+
+
+## Exploratory Data Analysis(EDA)
+Key Descriptive Statistics
+```{r}
+# Summary statistics for numerical variables
+summary(df)
+
+# More detailed stats (mean, median, sd, min, max, quartiles)
+library(psych)
+describe(df[sapply(df, is.numeric)])
+
+```
+
+Distributions of Key Variables
+Histogram of Numerical Features
+
+```{r}
+
+# Identify numeric columns
+numeric_cols <- names(df)[sapply(df, is.numeric)]
+
+# Loop through numeric columns and plot histograms
+for (col in numeric_cols) {
+  p <- ggplot(df, aes_string(x = col)) +
+    geom_histogram(fill = "skyblue", color = "black", bins = 30) +
+    labs(title = paste("Distribution of", col), x = col, y = "University Count") +
+    theme_minimal()
+  
+  print(p)
+}
+
+```
+
+
+
+```{r}
+ggplot(df, aes(x = score)) +
+  geom_histogram(binwidth = 2, fill = "#2c7bb6", color = "black", alpha = 0.8) +
+  labs(title = "Distribution of University Scores",
+       x = "Score",
+       y = "University Count in this Interval") +
+  theme_minimal()
+
+# 2. Distribution of Publications
+ggplot(df, aes(x = publications)) +
+  geom_histogram(binwidth = 50, fill = "#d95f02", color = "black", alpha = 0.8) +
+  labs(title = "Distribution of Publications",
+       x = "Publications",
+       y = "University Count in this Interval") +
+  theme_minimal()
+
+# 3. Distribution of Citations
+ggplot(df, aes(x = citations)) +
+  geom_histogram(binwidth = 50, fill = "#7570b3", color = "black", alpha = 0.8) +
+  labs(title = "Distribution of Citations",
+       x = "Citations",
+       y = "University Count in this Interval") +
+  theme_minimal()
+
+# 4. Distribution of Influence
+ggplot(df, aes(x = influence)) +
+  geom_histogram(binwidth = 2, fill = "#1b9e77", color = "black", alpha = 0.8) +
+  labs(title = "Distribution of Influence",
+       x = "Influence",
+       y = "University Count in this Interval") +
+  theme_minimal()
+
+# 5. Distribution of World Rank
+ggplot(df, aes(x = broad_impact)) +
+  geom_histogram(binwidth = 50, fill = "#e7298a", color = "black", alpha = 0.8) +
+  labs(title = "Distribution of World Rank",
+       x = "Broad Impact",
+       y = "University Count in this Interval") +
+  theme_minimal()
+
+```
+```{r}
+library(dplyr)
+
+# Suppose your data frame is df and the column is broad_impact
+specific_value <- 496.6995
+  # replace with the value you want
+
+count_specific <- df %>%
+  filter(broad_impact == specific_value) %>%
+  summarise(count = n())
+
+print(count_specific)
+
+
+```
+```{r}
+library(dplyr)
+
+# Suppose your data frame is called df and the column is broad_impact
+# Set your desired range
+lower <- 480
+upper <- 522
+
+# Count universities in that range
+count_in_range <- df %>%
+  filter(broad_impact >= lower & broad_impact <= upper) %>%
+  summarise(count = n())
+
+print(count_in_range)
+
+```
+
+
+
+Scatterplot for numeric column for all three tiers 
+
+```{r}
+
+# Create tier column if not already done
+df <- df %>%
+  mutate(tier = case_when(
+    world_rank <= 100 ~ "Top Tier",
+    world_rank <= 500 ~ "Mid Tier",
+    TRUE ~ "Low Tier"
+  ))
+
+# Define colors for tiers
+tier_colors <- c("Top Tier" = "blue", "Mid Tier" = "orange", "Low Tier" = "green")
+
+# Example for Score vs Influence (repeat similarly for other plots)
+ggplot(df, aes(x = score, y = influence, color = tier, group = tier)) +
+  geom_point(alpha = 0.6) +                # points only, no lines between points
+  scale_color_manual(values = tier_colors) +
+  labs(title = "Score vs Influence by Tier",
+       x = "Score", y = "Influence", color = "Tier") +
+  theme_minimal()
+
+
+# 2. Score vs Citations
+ggplot(df, aes(x = score, y = citations, color = tier, group = tier)) +
+  geom_point(alpha = 0.6) +
+  scale_color_manual(values = tier_colors) +
+  labs(title = "Score vs Citations by Tier",
+       x = "Score", y = "Citations", color = "Tier") +
+  theme_minimal()
+
+# 3. Score vs Publications
+ggplot(df, aes(x = score, y = publications, color = tier, group = tier)) +
+  geom_point(alpha = 0.6) +
+  scale_color_manual(values = tier_colors) +
+  labs(title = "Score vs Publications by Tier",
+       x = "Score", y = "Publications", color = "Tier") +
+  theme_minimal()
+
+# 4. Score vs Broad Impact
+ggplot(df, aes(x = score, y = broad_impact, color = tier, group = tier)) +
+  geom_point(alpha = 0.6) +
+  scale_color_manual(values = tier_colors) +
+  labs(title = "Score vs Broad Impact by Tier",
+       x = "Score", y = "Broad Impact", color = "Tier") +
+  theme_minimal()
+
+# 5. Score vs World Rank (reverse y axis)
+ggplot(df, aes(x = score, y = world_rank, color = tier, group = tier)) +
+  geom_point(alpha = 0.6) +
+  scale_y_reverse() +
+  scale_color_manual(values = tier_colors) +
+  labs(title = "Score vs World Rank by Tier",
+       x = "Score", y = "World Rank (Lower is Better)", color = "Tier") +
+  theme_minimal()
+
+# 6. Citations vs World Rank (reverse y axis)
+ggplot(df, aes(x = citations, y = world_rank, color = tier, group = tier)) +
+  geom_point(alpha = 0.6) +
+  scale_y_reverse() +
+  scale_color_manual(values = tier_colors) +
+  labs(title = "Citations vs World Rank by Tier",
+       x = "Citations", y = "World Rank (Lower is Better)", color = "Tier") +
+  theme_minimal()
+```
+```{r}
+
+# Filter for universities with world_rank between 0 and 250
+filtered_df <- df %>%
+  filter(world_rank >= 750, world_rank <= 1000)
+
+# Total citation count in that rank range
+total_citations <- sum(filtered_df$citations, na.rm = TRUE)
+
+# Count of universities with citation count between 0 and 200 in that rank range
+count_citations_0_200 <- filtered_df %>%
+  filter(citations >=200, citations <= 400) %>%
+  summarise(count = n()) %>%
+  pull(count)
+
+list(
+  total_citations = total_citations,
+  count_citations_0_200 = count_citations_0_200
+)
+
+```
+
+Correlation Heatmap
+
+```{r}
+# Step 1: Select numeric columns
+numeric_df <- df[sapply(df, is.numeric)]
+
+# Step 2: Compute correlation matrix (excluding NAs)
+cor_matrix <- cor(df[, sapply(df, is.numeric)], use = "complete.obs")
+
+
+ggcorrplot(cor_matrix,
+           method = "square",
+           type = "lower",
+           lab = TRUE,
+           lab_size = 2.5,
+           colors = c("#B2182B", "white", "#2166BC"),
+           title = "University Metrics Correlation",
+           ggtheme = ggplot2::theme_minimal()) +
+  theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"))
+
+```
+
+
+Boxplots to Detect Outliers by Rank Group
+This shows how metrics differ across rank tiers.
+
+```{r}
+ggplot(df, aes(x = rank_group, y = score, fill = rank_group)) +
+  geom_boxplot() +
+  labs(title = "Score Distribution by Rank Tier", x = "Rank Tier", y = "Score") +
+  theme_minimal()
+
+```
+
+
+
+```{r}
+
+# Parameters: specify the year and country you want to filter
+target_year <- 2015
+target_country <- "USA"
+
+# Filter dataset by year and country, then count unique universities
+university_count <- df %>%
+  filter(year == target_year, country == target_country) %>%
+  summarise(count = n_distinct(institution)) %>%
+  pull(count)
+
+print(university_count)
+
+```
+
+
+Line Plot
+```{r}
+
+
+df <- df %>%
+  mutate(tier = case_when(
+    world_rank <= 100 ~ "Top Tier",
+    world_rank <= 500 ~ "Mid Tier",
+    TRUE ~ "Low Tier"
+  ))
+
+tier_colors <- c("Top Tier" = "blue", "Mid Tier" = "orange", "Low Tier" = "green")
+
+# 1. Average Score by Year and Tier
+ggplot(df %>% group_by(year, tier) %>% summarise(avg_score = mean(score, na.rm = TRUE), .groups = "drop"),
+       aes(x = year, y = avg_score, color = tier)) +
+  geom_line(size = 1.2) + geom_point(size = 3) +
+  scale_color_manual(values = tier_colors) +
+  scale_x_continuous(breaks = unique(df$year)) +
+  labs(title = "Average Score Over Years", x = "Year", y = "Average Score") +
+  theme_minimal()
+
+ggplot(df %>% 
+         group_by(year, tier) %>% 
+         summarise(avg_citations = mean(citations, na.rm = TRUE), .groups = "drop"),
+       aes(x = year, y = avg_citations, color = tier)) +
+  geom_line(size = 1.2) + 
+  geom_point(size = 3) +
+  scale_color_manual(values = tier_colors) +
+  scale_x_continuous(breaks = unique(df$year)) +
+  scale_y_continuous(breaks = seq(0, max(df$citations, na.rm = TRUE) + 100, by = 100)) +
+  labs(title = "Average Citations Over Years", x = "Year", y = "Average Citations") +
+  theme_minimal()
+
+
+# 3. Average Publications by Year and Tier
+ggplot(df %>% group_by(year, tier) %>% summarise(avg_publications = mean(publications, na.rm = TRUE), .groups = "drop"),
+       aes(x = year, y = avg_publications, color = tier)) +
+  geom_line(size = 1.2) + geom_point(size = 3) +
+  scale_color_manual(values = tier_colors) +
+  scale_x_continuous(breaks = unique(df$year)) +
+  scale_y_continuous(breaks = seq(0, max(df$publications, na.rm = TRUE) + 100, by = 100)) +
+
+  labs(title = "Average Publications Over Years", x = "Year", y = "Average Publications") +
+  theme_minimal()
+
+# 4. Average Broad Impact by Year and Tier
+ggplot(df %>% group_by(year, tier) %>% summarise(avg_broad_impact = mean(broad_impact, na.rm = TRUE), .groups = "drop"),
+       aes(x = year, y = avg_broad_impact, color = tier)) +
+  geom_line(size = 1.2) + geom_point(size = 3) +
+  scale_color_manual(values = tier_colors) +
+  scale_x_continuous(breaks = unique(df$year)) +
+  labs(title = "Average Broad Impact Over Years", x = "Year", y = "Average Broad Impact") +
+  theme_minimal()
+
+ggplot(df %>%
+         group_by(year, tier) %>%
+         summarise(avg_quality_edu = mean(quality_of_education, na.rm = TRUE), .groups = "drop"),
+       aes(x = year, y = avg_quality_edu, color = tier)) +
+  geom_line(size = 1.2) + geom_point(size = 3) +
+  scale_color_manual(values = tier_colors) +
+  scale_x_continuous(breaks = unique(df$year)) +
+  labs(title = "Average Quality of Education Over Years by Tier",
+       x = "Year", y = "Quality of Education Score") +
+  theme_minimal()
+
+ggplot(df %>%
+         group_by(year, tier) %>%
+         summarise(avg_influence = mean(influence, na.rm = TRUE), .groups = "drop"),
+       aes(x = year, y = avg_influence, color = tier)) +
+  geom_line(size = 1.2) + geom_point(size = 3) +
+  scale_color_manual(values = tier_colors) +
+  scale_x_continuous(breaks = unique(df$year)) +
+  labs(title = "Average Influence Over Years by Tier",
+       x = "Year", y = "Influence Score") +
+  theme_minimal()
+
+
+
+```
+
+```{r}
+# Select top 6 countries across all years (overall)
+top_countries <- df %>%
+  group_by(country) %>%
+  summarise(total = n()) %>%
+  top_n(5, total) %>%
+  pull(country)
+
+# Filter only those countries
+df_filtered <- df %>%
+  filter(country %in% top_countries)
+
+# Count universities per year per country
+country_year_trend <- df_filtered %>%
+  group_by(year, country) %>%
+  summarise(university_count = n(), .groups = "drop")
+
+# Plot line chart
+ggplot(country_year_trend, aes(x = year, y = university_count, color = country)) +
+  geom_line(size = 1.2) +
+  geom_point(size = 2) +
+  labs(title = "Trends of Ranked Universities per Year (Top Countries)",
+       x = "Year",
+       y = "Number of Universities") +
+  theme_minimal()
+
+```
+```{r}
+df %>%
+  filter(country == "China", 
+         year %in% 2012:2015) %>%
+  count(year, name = "university_count")
+```
+
+
+
+Boxplot of different attributes
+
+```{r}
+df %>%
+  mutate(pub_tertile = cut_number(publications, 3, labels = c("Low", "Medium", "High"))) %>%
+  ggplot(aes(x = pub_tertile, y = influence, fill = pub_tertile)) +
+  geom_boxplot() +
+  labs(title = "Research Influence by Publication Volume", 
+       x = "Publication Tertile", y = "Influence Score") +
+  scale_fill_brewer(palette = "Pastel1") +
+  theme_minimal()
+
+df %>%
+  mutate(year = factor(year)) %>%
+  ggplot(aes(x = year, y = broad_impact, fill = year)) +
+  geom_boxplot() +
+  labs(title = "Broad Impact Trends (2012-2015)", 
+       x = "Year", y = "Broad Impact Score") +
+  scale_fill_viridis_d() +
+  theme_minimal()
+
+ggplot(df, aes(x = factor(year), y = score)) +
+  geom_boxplot(fill = "lightblue", outlier.color = "red") +
+  labs(title = "University Scores Distribution (2012-2015)", 
+       x = "Year", y = "Score") +
+  theme_minimal()
+
+
+ggplot(df, aes(x = factor(year), y = citations)) +
+  geom_boxplot(fill = "skyblue", color = "black", alpha = 0.7) +
+  labs(title = "Citations Distribution by Year",
+       x = "Year",
+       y = "Citations") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0),
+    axis.title = element_text(face = "bold")
+  )
+
+
+ggplot(df, aes(x = rank_group, y = patents, fill = rank_group)) +
+  geom_boxplot() +
+  labs(title = "Patents Filed by University Tier", 
+       x = "Rank Group", y = "Patents") +
+  scale_fill_brewer(palette = "Set2") +
+  theme_minimal()
+
+# Get top 5 countries by number of universities
+top5_countries <- df %>%
+  group_by(country) %>%
+  summarise(count = n(), .groups = "drop") %>%
+  arrange(desc(count)) %>%
+  slice_head(n = 5) %>%
+  pull(country)
+
+# Filter and plot
+df %>%
+  filter(country %in% top5_countries) %>%
+  ggplot(aes(x = country, y = score, fill = country)) +
+  geom_boxplot() +
+  labs(title = "University Scores by Top 5 Countries",
+       x = "Country",
+       y = "Score") +
+  scale_fill_brewer(palette = "Set3") +
+  theme_minimal()
+
+
+```
+Pairplot of different numeric attributes
+
+```{r}
+# Ensure rank_group is a factor and assign numeric colors
+df$rank_group <- as.factor(df$rank_group)
+colors <- as.numeric(df$rank_group)  # This will convert factor levels to 1, 2, 3
+
+# Select relevant columns
+selected_data <- df[, c("score", "publications", "citations")]
+
+# Create pair plot
+pairs(selected_data,
+      col = colors,
+      pch = 19,
+      labels = c("Score", "Publications", "Citations"),  # custom column names
+      main = "Pair Plot of University Features Colored by Rank Group")
+
+```
+
+
+
+
+```{r}
+# Ensure rank_group is a factor and assign numeric colors
+df$rank_group <- as.factor(df$rank_group)
+colors <- as.numeric(df$rank_group)  # Factor levels → numeric colors
+
+# Select relevant numeric columns
+selected_data <- df[, c("score", "publications", "citations", 
+                        "influence", "broad_impact", "patents")]
+
+# Create pair plot without tier labels
+pairs(selected_data,
+      col = colors,
+      pch = 19,
+      labels = c("Score", "Publications", "Citations","influence", "broad_impact", "patents"),
+      main = "Pair Plot of University Features")
+
+```
+
+
+Barplot
+```{r}
+
+ggplot(summary_stats, aes(x = year, y = count, fill = rank_group)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Number of Universities by Rank Group and Year",
+       x = "Year", y = "Count") +
+  theme_minimal()
+
+```
+```{r}
+
+library(dplyr)
+library(ggplot2)
+
+# Assuming your data is in `df` with columns: `country`, `year`, `university_count` (or similar)
+
+# Get top 5 countries per year
+top_countries_each_year <- df %>%
+  group_by(year, country) %>%
+  summarise(university_count = n(), .groups = "drop") %>%
+  group_by(year) %>%
+  slice_max(order_by = university_count, n = 5) %>%
+  ungroup()
+
+# Plot
+ggplot(top_countries_each_year, 
+       aes(x = reorder(country, university_count), 
+           y = university_count, 
+           fill = country)) +  # Color by country instead of year
+  geom_col(position = "dodge") +
+  facet_wrap(~ year, scales = "free") +  # Separate plots per year
+  coord_flip() +  # Horizontal bars
+  labs(title = "Top 5 Countries by Number of Ranked Universities (Each Year)",
+       x = "Country",
+       y = "Number of Universities",
+       fill = "Country") +
+  theme_minimal() +
+  theme(legend.position = "none")  # Remove legend (redundant since country is on y-axis)
+```
+
+```{r}
+
+
+# Filter data for 2012-2015 and compute top 5 countries by avg score per year
+df_yearly_avg <- df %>%
+  filter(year %in% 2012:2015) %>%  # Keep only 2012-2015
+  group_by(year, country) %>%
+  summarise(avg_score = mean(score, na.rm = TRUE), .groups = "drop") %>%
+  group_by(year) %>%
+  arrange(year, desc(avg_score)) %>%  # Sort by year and score (high to low)
+  slice(1:5) %>%  # Take top 5 per year
+  ungroup()
+
+# Plot faceted by year
+ggplot(df_yearly_avg, 
+       aes(x = reorder(country, avg_score), 
+           y = avg_score, 
+           fill = country)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +  # Horizontal bars
+  facet_wrap(~ year, ncol = 2, scales = "free_y") +  # 2x2 grid of plots
+  labs(title = "Top 5 Countries by Average Score (2012-2015)",
+       x = "Country",
+       y = "Average Score") +
+  theme_minimal() +
+  theme(legend.position = "none")  # Remove legend (redundant)
+```
+
+
+```{r}
+df %>%
+  group_by(tier) %>%
+  summarise(avg_score = mean(score, na.rm = TRUE)) %>%
+  ggplot(aes(x = tier, y = avg_score, fill = tier)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = c("Top Tier" = "blue", "Mid Tier" = "orange", "Low Tier" = "green")) +
+  labs(title = "Average Score by University Tier",
+       x = "Tier", y = "Average Score") +
+  theme_minimal()
+
+```
