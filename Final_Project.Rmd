@@ -1,0 +1,91 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+
+
+
+```{r}
+library(rvest)
+library(dplyr)
+library(openxlsx)
+
+# Function to scrape one page
+scrape_guardian_page <- function(page_num) {
+  base_url <- if (page_num == 1) {
+    "https://www.theguardian.com/world"
+  } else {
+    paste0("https://www.theguardian.com/world?page=", page_num)
+  }
+  
+  page <- tryCatch(read_html(base_url), error = function(e) NULL)
+  if (is.null(page)) return(NULL)
+  
+  article_nodes <- page %>% html_nodes("a.dcr-2yd10d")
+  
+  urls <- article_nodes %>% html_attr("href")
+  urls <- ifelse(grepl("^http", urls), urls, paste0("https://www.theguardian.com", urls))
+  titles <- article_nodes %>% html_attr("aria-label")
+  
+  data.frame(
+    Title = titles,
+    URL = urls,
+    stringsAsFactors = FALSE
+  )
+}
+
+# Collect from multiple pages (e.g., 5 pages ~225 articles)
+all_links <- do.call(rbind, lapply(1:5, scrape_guardian_page))
+
+# Remove duplicates
+all_links <- all_links %>% distinct(URL, .keep_all = TRUE)
+
+# Now scrape article bodies
+all_titles <- c()
+all_bodies <- c()
+all_urls <- c()
+
+for (i in seq_len(nrow(all_links))) {
+  Sys.sleep(1)  # polite scraping
+  
+  art_page <- tryCatch(read_html(all_links$URL[i]), error = function(e) NULL)
+  if (!is.null(art_page)) {
+    content <- art_page %>% 
+      html_nodes("div.article-body-commercial-selector p") %>% 
+      html_text(trim = TRUE) %>% 
+      paste(collapse = "\n")
+    
+    all_titles <- c(all_titles, all_links$Title[i])
+    all_bodies <- c(all_bodies, content)
+    all_urls   <- c(all_urls, all_links$URL[i])
+    
+    cat("Scraped article:", i, "\n")
+  } else {
+    cat("Failed to scrape:", all_links$URL[i], "\n")
+  }
+}
+
+# Build final dataframe
+articles_df <- data.frame(
+  Title = all_titles,
+  Body  = all_bodies,
+  URL   = all_urls,
+  stringsAsFactors = FALSE
+)
+
+# Save
+write.xlsx(articles_df, "guardian_articles_200.xlsx", overwrite = TRUE)
+
+```
+```{r}
+
+print(articles_df$Title[1])
+print(articles_df$Body[1])
+
+```
+
+
+
+
