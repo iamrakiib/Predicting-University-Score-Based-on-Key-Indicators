@@ -1,11 +1,8 @@
 ---
 title: "University Ranking Analysis"
 author: |
-  Group 5  
+  Rakib Hassan 
   22-46624-1  
-  22-46667-1  
-  22-46342-1  
-  22-47180-1
 date: "`r Sys.Date()`"
 output:
   html_document:
@@ -729,5 +726,6 @@ df %>%
   labs(title = "Average Score by University Tier",
        x = "Tier", y = "Average Score") +
   theme_minimal()
+
 
 ```
